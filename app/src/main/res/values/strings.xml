@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">BeerCafeSample</string>
     <string name="txt_show_route">Show Route</string>
+    <string name="txt_near_places">Near-By Places</string>
 </resources>

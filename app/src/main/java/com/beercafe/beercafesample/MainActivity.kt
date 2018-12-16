@@ -23,6 +23,7 @@ import android.view.View
 import android.widget.Toast
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.OnSuccessListener
 import com.google.android.gms.tasks.Task
 import com.here.android.mpa.common.GeoCoordinate
 import com.here.android.mpa.common.Image
@@ -37,115 +38,122 @@ import kotlinx.android.synthetic.main.bottom_sheet.*
 
 class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
     private lateinit var bottomSheetBehavior:BottomSheetBehavior<View>
-    private lateinit var mLocationManager: LocationManager
-    private lateinit var mLocation: Location
+    private lateinit var mLastLocation: Location
     private lateinit var mAddress: Address
-    private lateinit var mLocationClient: FusedLocationProviderClient
+    private lateinit var mFusedLocationClient: FusedLocationProviderClient
     private lateinit var mMap: Map
     private lateinit var mapFragment: MapFragment
     private lateinit var task: Task<LocationSettingsResponse>
     private var locationRequest:LocationRequest? = null
+    private val REQUEST_LOCATION_PERMISSION: Int=1111
+    private val Request_GPS_Permission: Int = 11111
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         mapFragment = (fragmentManager.findFragmentById(R.id.map_fragment)) as MapFragment
-        tv_title.text = "Near-By Places"
+        tv_title.text = getString(R.string.txt_near_places)
         bottomSheetBehavior = BottomSheetBehavior.from(bottom_sheet)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
-                // Show an explanation to the user *asynchronously* -- don't block
-                // this thread waiting for the user's response! After the user
-                // sees the explanation, try again to request the permission.
-            } else {
-                // No explanation needed, we can request the permission.
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1111)
 
-                // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-                // app-defined int constant. The callback method gets the
-                // result of the request.
-                //
-                }
-            // Permission is not granted
+        //Requesting permisions
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,  arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQUEST_LOCATION_PERMISSION)
+
         } else {
-
-            startProcess()
-            mLocationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-//        mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,0,0f, mLocationListener)
-            mLocationClient.lastLocation.addOnSuccessListener {
-                Log.d("LocationClient","Result : "+it.latitude+""+it.longitude)
-                mLocation = it
-                initializeMap()
-            }
-                .addOnFailureListener {
-                    if (it is ResolvableApiException) try {
-                        // Show the dialog by calling startResolutionForResult(),
-                        // and check the result in onActivityResult().
-                        it.startResolutionForResult(
-                            this@MainActivity,
-                            11111
-                        )
-                    } catch (sendEx: IntentSender.SendIntentException) {
-                        // Ignore the error.
-                    }
-                    // Location settings are not satisfied, but this can be fixed
-                    // by showing the user a dialog.
-                }
-
+            Log.d("TAG", "getLocation: permissions granted")
+            getLocation()
 
         }
     }
-
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        startProcess()
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when(requestCode)
+        {
+            REQUEST_LOCATION_PERMISSION->
+            {
+                if (grantResults.size > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    getLocation();
+                } else {
+                    Toast.makeText(this, "location_permission_denied", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun startProcess() {
-        locationRequest = LocationRequest.create()?.apply {
-            interval = 5000
-            fastestInterval = 1000
-            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
-        }
-        val builder = LocationSettingsRequest.Builder()
-            .addLocationRequest(locationRequest!!)
-        mLocationClient = LocationServices.getFusedLocationProviderClient(this)
-
-        val client: SettingsClient = LocationServices.getSettingsClient(this)
-        task = client.checkLocationSettings(builder.build())
-
-        task.addOnSuccessListener { locationSettingsResponse ->
-            // All location settings are satisfied. The client can initialize
-            // location requests here.
-            // ...
-            Log.d("LocationResponse", locationSettingsResponse.toString())
-            mLocationClient.requestLocationUpdates(
-                locationRequest,
-                object : LocationCallback() {
-                    override fun onLocationResult(result: LocationResult?) {
-                        super.onLocationResult(result)
-                        mLocation = result!!.locations[0]
+    /**
+     * Getting current location after permission has been granted
+     */
+    private fun getLocation() {
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+        mFusedLocationClient.lastLocation.addOnSuccessListener(
+            object : OnSuccessListener<Location>{
+                override fun onSuccess(location: Location?) {
+                    if (location != null) {
+                        mLastLocation = location
+                        Log.d("LastLocation",""+
+                                mLastLocation.getLatitude()+
+                                mLastLocation.getLongitude()+
+                                mLastLocation.getTime())
 
                         initializeMap()
+                    } else {
+                        Toast.makeText(this@MainActivity,"FailedToGetLocation",Toast.LENGTH_SHORT).show()
+                        locationRequest = LocationRequest.create()?.apply {
+                            interval = 5000
+                            fastestInterval = 1000
+                            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+                        }
+                        val builder = LocationSettingsRequest.Builder()
+                            .addLocationRequest(locationRequest!!)
+                        val client: SettingsClient = LocationServices.getSettingsClient(this@MainActivity)
+                        task = client.checkLocationSettings(builder.build())
+                        if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+                        task.addOnSuccessListener { locationSettingsResponse ->
+                            // All location settings are satisfied. The client can initialize
+                            Log.d("LocationResponse", locationSettingsResponse.toString())
+                            mFusedLocationClient.requestLocationUpdates(
+                                locationRequest,
+                                object : LocationCallback() {
+                                    override fun onLocationResult(result: LocationResult?) {
+                                        super.onLocationResult(result)
+                                        mLastLocation = result!!.locations[0]
+                                        getLocation()
+                                        mFusedLocationClient.removeLocationUpdates(this)
 
-//                            mLocationClient.removeLocationUpdates(this)
+                                    }
+                                },
+                                Looper.getMainLooper() /* Looper */
+                            )
+                        }
 
+                        task.addOnFailureListener { exception ->
+                            Log.d("ResolutionFailed","onFailure")
+                            if (exception is ResolvableApiException) {
+                                // Location settings are not satisfied, but this can be fixed
+                                // by showing the user a dialog.
+                                try {
+                                    // Show the dialog by calling startResolutionForResult(),
+                                    // and check the result in onActivityResult().
+                                    exception.startResolutionForResult(this@MainActivity, Request_GPS_Permission)
+                                } catch (sendEx: IntentSender.SendIntentException) {
+                                    // Ignore the error.
+                                }
+                            }
+                        }
                     }
-                },
-                Looper.getMainLooper() /* Looper */
-            )
-        }
+                }
+            }
 
-        task.addOnFailureListener { exception ->
+        ).addOnFailureListener {
             Log.d("ResolutionFailed","onFailure")
-            if (exception is ResolvableApiException) {
+            if (it is ResolvableApiException) {
                 // Location settings are not satisfied, but this can be fixed
                 // by showing the user a dialog.
                 try {
                     // Show the dialog by calling startResolutionForResult(),
                     // and check the result in onActivityResult().
-                    exception.startResolutionForResult(this@MainActivity, 11111)
+                    it.startResolutionForResult(this@MainActivity, Request_GPS_Permission)
                 } catch (sendEx: IntentSender.SendIntentException) {
                     // Ignore the error.
                 }
@@ -153,18 +161,21 @@ class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
         }
     }
 
+    /**
+     * Initializing the Here Map and creating markers
+     */
     private fun initializeMap() {
-        if (mLocation != null) {
+        if (mLastLocation != null) {
             mapFragment.init {
                 if (it == OnEngineInitListener.Error.NONE) {
                     mMap = mapFragment.map
-                    mMap.setCenter(GeoCoordinate(mLocation.latitude, mLocation.longitude), Map.Animation.LINEAR)
+                    mMap.setCenter(GeoCoordinate(mLastLocation.latitude, mLastLocation.longitude), Map.Animation.LINEAR)
 
                     mapFragment.mapGesture.addOnGestureListener(this@MainActivity)
                     getCurrentAddress()
 
                     val exploreRequest =
-                        ExploreRequest().setSearchCenter(GeoCoordinate(mLocation.latitude, mLocation.longitude))
+                        ExploreRequest().setSearchCenter(GeoCoordinate(mLastLocation.latitude, mLastLocation.longitude))
                     exploreRequest.collectionSize = 10
                     exploreRequest.execute { result, error ->
                         if (error == ErrorCode.NONE) {
@@ -172,71 +183,45 @@ class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
                             var locations = result!!.items
 
                             for (i in locations) {
-
-                                var place = i as PlaceLink
-
+                                val place = i as PlaceLink
                                 Log.d(
                                     "NearByPlaces",
                                     place.title + " " + place.averageRating + " " + place.category.name + " " + place.distance + " - " + place.position.latitude + "," + place.position.longitude
                                 )
-                                var marker = MapMarker()
-
-
+                                val marker = MapMarker()
                                 marker.coordinate =
                                         GeoCoordinate(place.position.latitude, place.position.longitude)
                                 marker.title = place.title
                                 marker.description = place.category.name + "-" + place.distance + "-" +
                                         place.position.latitude + "," + place.position.longitude
                                 mMap.addMapObject(marker)
-
-
                             }
                         }
                     }
-
-
-
                 }
             }
-
-
         }
     }
 
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if(requestCode==11111)
+        if(requestCode==Request_GPS_Permission)
         {
             Log.d("LocationResolution","Resolved")
-        }
-    }
-
-    var mLocationListener = object : LocationListener {
-        override fun onLocationChanged(location: Location?) {
-            Log.d("location_change", location.toString())
-            mLocation = location!!
-        }
-
-        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
-            Log.d("status_change", provider.toString())
-        }
-
-        override fun onProviderEnabled(provider: String?) {
-            Log.d("on_provider_change", provider.toString())
-        }
-
-        override fun onProviderDisabled(provider: String?) {
-            Log.d("provider disabled", provider.toString())
+            getLocation()
         }
     }
 
 
+    /**
+     * Showing route in google map through intent
+     */
     fun calculateRoute( location: String)
     {
         val intent = Intent(
             android.content.Intent.ACTION_VIEW,
-            Uri.parse("http://maps.google.com/maps?saddr="+mLocation.latitude+","+mLocation.longitude+"&daddr="+location)
+            Uri.parse("http://maps.google.com/maps?saddr="+mLastLocation.latitude+","+mLastLocation.longitude+"&daddr="+location)
         )
         startActivity(intent)
 
@@ -308,15 +293,10 @@ class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
 
     override fun onMapObjectsSelected(objects: MutableList<ViewObject>): Boolean {
         for (i in objects) {
-
-
-
             if (i.baseType == ViewObject.Type.USER_OBJECT) {
                 if ((i as MapObject).type == MapObject.Type.MARKER) {
                     tv_title.text = (i as MapMarker).title
                     var string  = i.description
-
-
                     tv_desc.text = "Place : "+string.split("-")[0]
                     tv_coordinate.text = "Distance : "+string.split("-")[1]
                     tv_distance.text = "Coordinates : "+string.split("-")[2]
@@ -332,8 +312,6 @@ class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
                         }
 
                     })
-
-
                 }
             }
         }
@@ -350,19 +328,18 @@ class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
         super.onBackPressed()
     }
 
-
-    fun getCurrentAddress()
+    /**
+     * Getting the address string from current location coordinates
+     */
+    private fun getCurrentAddress()
     {
-        val request = ReverseGeocodeRequest(GeoCoordinate(mLocation.latitude, mLocation.longitude))
-        request.execute(object : ResultListener<Address> {
-            override fun onCompleted(address: Address?, error: ErrorCode?) {
-                if (error == ErrorCode.NONE) {
-                    mAddress = address!!
-                    Log.d("CurrentLocation", "" + address.text)
-                    tv_title.text = "Near-By Places (" + address.text + ")"
-                }
+        val request = ReverseGeocodeRequest(GeoCoordinate(mLastLocation.latitude, mLastLocation.longitude))
+        request.execute { address, error ->
+            if (error == ErrorCode.NONE) {
+                mAddress = address!!
+                Log.d("CurrentLocation", "" + address.text)
+                tv_title.text = "Near-By Places (" + address.text + ")"
             }
-
-        })
+        }
     }
 }
