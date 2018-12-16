@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BeerCafeSample</string>
+    <string name="txt_show_route">Show Route</string>
+</resources>
