@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity(),MapGesture.OnGestureListener {
 
                         initializeMap()
                     } else {
-                        Toast.makeText(this@MainActivity,"FailedToGetLocation",Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity,"Waiting for Current Location",Toast.LENGTH_SHORT).show()
                         locationRequest = LocationRequest.create()?.apply {
                             interval = 5000
                             fastestInterval = 1000
